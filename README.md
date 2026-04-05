@@ -5,8 +5,11 @@ Theil–Sen estimator for LabVIEW 2021 SP1
 
 Using "example.vi," you can test the operation of "Theil-Sen.vi." Here's an example:
 
-![Example of use](./example.bmp)
+![Example of use](./Pictures/example.bmp)
 
+You can choose one of three "Sen parameter" options: "Auto" – automatic checking for duplicate X values, "On" – duplicate checking is always enabled, and "Off" – checking is disabled.
 
-If you are sure that X values ​​are not repeated, it is better to leave the "Sen parameter?" parameter at the default "False".
+![Auto](./Pictures/Sen_parameter_Auto.bmp)
+
 Also, checking for array length equality is enabled by default. It's best to leave it enabled.
+Added files for LabVIEW 2010 in a separate folder.
