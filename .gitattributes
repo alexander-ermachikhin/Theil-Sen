@@ -1,0 +1,7 @@
+*.vi linguist-language=LabVIEW
+*.lvclass linguist-language=LabVIEW
+*.lvlib linguist-language=LabVIEW
+*.lvproj linguist-language=LabVIEW
+*.ctl linguist-language=LabVIEW
+*.ctt linguist-language=LabVIEW
+*.lvlibp linguist-language=LabVIEW
