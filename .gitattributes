@@ -5,3 +5,4 @@
 *.ctl linguist-language=LabVIEW
 *.ctt linguist-language=LabVIEW
 *.lvlibp linguist-language=LabVIEW
+*.cpp linguist-language=C++

@@ -3,10 +3,10 @@
 *.llb
 
 # Shared objects (inc. Windows DLLs)
-*.dll
 *.so
 *.so.*
 *.dylib
+*.dll
 
 # Executables
 *.exe
@@ -15,3 +15,12 @@
 *.aliases
 *.lvlps
 .cache/
+
+# C++ build directories and IDE metadata
+.idea/
+cmake-build-debug/
+cmake-build-release/
+*.user
+
+# Track prebuilt DLL for LabVIEW
+!Dll/LabVIEW_TheilSen.dll
