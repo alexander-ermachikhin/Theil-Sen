@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <numeric>
 #include <extcode.h>
 
 // Structure definition matching LabVIEW 1D Array Layout in memory
@@ -23,7 +24,6 @@ extern "C" __declspec(dllexport) int32_t ThielSenProcessing(
     LVArrayHandle y_handle,
     const LVArrayHandle x_handle,
     const int16_t match_lengths,
-    const uint16_t case_mode,
     double* slope,
     double* intercept
 ) {
@@ -64,40 +64,33 @@ extern "C" __declspec(dllexport) int32_t ThielSenProcessing(
         }
     }
 
-    // 4. Scan for duplicate X (Only required for AUTO mode)
-    bool has_duplicates = false;
-    if (case_mode == 0) {
-        for (int32_t i = 0; i < n - 1; ++i) {
-            for (int j = i + 1; j < n; ++j) {
-                if (std::abs(x_in[i] - x_in[j]) < 1e-9) {
-                    has_duplicates = true;
-                    break;
-                }
-            }
-            if (has_duplicates) break;
-        }
+    // 4. Sorting data for further processing
+    std::vector<int32_t> indices(n);
+    std::iota(indices.begin(), indices.end(), 0);
+
+    std::sort(indices.begin(), indices.end(), [&](int32_t a, int32_t b) {
+        return x_in[a] < x_in[b];
+    });
+
+    std::vector<double> x_sorted(n);
+    std::vector<double> y_sorted(n);
+    for (int32_t i = 0; i < n; ++i) {
+        x_sorted[i] = x_in[indices[i]];
+        y_sorted[i] = y_in_out[indices[i]];
     }
 
     // 5. Pairwise calculation of Thiel-Sen slopes
-    std::vector<double> slopes;
     size_t max_slopes = (static_cast<size_t>(n) * (n - 1)) / 2;
+    std::vector<double> slopes;
     slopes.reserve(max_slopes);
 
-    // Branch splitting for maximum pipeline speed
-    if (case_mode == 1 || case_mode == 2 || (case_mode == 0 && has_duplicates)) {
-        for (int32_t i = 0; i < n; ++i) {
-            for (int32_t j = i + 1; j < n; ++j) {
-                double dx = x_in[j] - x_in[i];
-                if (std::abs(dx) > 1e-9) {
-                    slopes.push_back((y_in_out[j] - y_in_out[i]) / dx);
-                }
-            }
-        }
-    } else {
-        // Direct, uninterrupted loop execution for pure AUTO mode (No branch penalties)
-        for (int32_t i = 0; i < n; ++i) {
-            for (int32_t j = i + 1; j < n; ++j) {
-                slopes.push_back((y_in_out[j] - y_in_out[i]) / (x_in[j] - x_in[i]));
+    for (int32_t i = 0; i < n; ++i) {
+        double xi = x_sorted[i];
+        double yi = y_sorted[i];
+        for (int32_t j = i + 1; j < n; ++j) {
+            double dx = x_sorted[j] - xi;
+            if (dx > 1e-9) {
+                slopes.push_back((y_sorted[j] - yi) / dx);
             }
         }
     }
