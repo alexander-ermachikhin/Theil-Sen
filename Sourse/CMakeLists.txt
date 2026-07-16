@@ -7,10 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 1. Locate LabVIEW cintools on the developer's PC
 if(EXISTS "C:/Program Files/National Instruments/LabVIEW 2021/cintools")
     set(LABVIEW_CINTOOLS "C:/Program Files/National Instruments/LabVIEW 2021/cintools")
-elseif(EXISTS "C:/Program Files/National Instruments/LabVIEW/cintools")
-    set(LABVIEW_CINTOOLS "C:/Program Files/National Instruments/LabVIEW/cintools")
 else()
-    set(LABVIEW_CINTOOLS "C:/Program Files/National Instruments/LabVIEW 2021/cintools")
+    set(LABVIEW_CINTOOLS "C:/Program Files/National Instruments/LabVIEW/cintools")
 endif()
 
 message(STATUS "Using LabVIEW header path for compilation: ${LABVIEW_CINTOOLS}")
@@ -29,11 +27,22 @@ add_compile_definitions(
         MSWIN
 )
 
-# 3. Critical deployment flags for cross-computer compatibility
-if(MINGW OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -static -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic")
-endif()
-
-# 4. Compile as a dynamic library target (.dll)
+# 3. Compile as a dynamic library target (.dll)
 add_library(LabVIEW_TheilSen SHARED library.cpp)
 set_target_properties(LabVIEW_TheilSen PROPERTIES PREFIX "")
+
+# 4. Critical deployment flags for cross-computer compatibility
+if(MINGW OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    target_link_options(LabVIEW_TheilSen PRIVATE
+            -static-libgcc
+            -static-libstdc++
+            -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+    )
+endif()
+
+# 5. OpenMP Support for Parallel Hierarchical Median
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP found: Parallel processing enabled")
+    target_link_libraries(LabVIEW_TheilSen PRIVATE OpenMP::OpenMP_CXX)
+endif()

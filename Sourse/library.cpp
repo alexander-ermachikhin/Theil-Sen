@@ -5,6 +5,7 @@
 #include <limits>
 #include <numeric>
 #include <extcode.h>
+#include <omp.h>
 
 // Structure definition matching LabVIEW 1D Array Layout in memory
 typedef struct {
@@ -22,7 +23,7 @@ inline bool isInvalidBitwise(double d) {
 
 extern "C" __declspec(dllexport) int32_t ThielSenProcessing(
     LVArrayHandle y_handle,
-    const LVArrayHandle x_handle,
+    LVArrayHandle x_handle,
     const int16_t match_lengths,
     double* slope,
     double* intercept
@@ -79,35 +80,64 @@ extern "C" __declspec(dllexport) int32_t ThielSenProcessing(
         y_sorted[i] = y_in_out[indices[i]];
     }
 
-    // 5. Pairwise calculation of Thiel-Sen slopes
-    size_t max_slopes = (static_cast<size_t>(n) * (n - 1)) / 2;
-    std::vector<double> slopes;
-    slopes.reserve(max_slopes);
+    // 5 & 6. A variation of the Theil–Sen estimator, the repeated median regression of Siegel (Median of Medians)
+    std::vector<double> group_medians;
+    group_medians.reserve(n);
 
-    for (int32_t i = 0; i < n; ++i) {
+    int num_threads = omp_get_max_threads();
+    std::vector<std::vector<double>> local_medians(num_threads);
+
+    #pragma omp parallel for schedule(dynamic, 64) default(none) \
+        shared(x_sorted, y_sorted, local_medians, n)
+    for (int32_t i = 0; i < n - 1; ++i) {
+        int tid = omp_get_thread_num();
         double xi = x_sorted[i];
         double yi = y_sorted[i];
+
+        std::vector<double> local_slopes;
+        local_slopes.reserve(n - i - 1);
+
         for (int32_t j = i + 1; j < n; ++j) {
             double dx = x_sorted[j] - xi;
             if (dx > 1e-9) {
-                slopes.push_back((y_sorted[j] - yi) / dx);
+                local_slopes.push_back((y_sorted[j] - yi) / dx);
             }
+        }
+
+        if (!local_slopes.empty()) {
+            size_t mid = local_slopes.size() / 2;
+            auto mid_it = local_slopes.begin();
+            std::advance(mid_it, static_cast<std::ptrdiff_t>(mid));
+            std::nth_element(local_slopes.begin(), mid_it, local_slopes.end());
+            double group_median = *mid_it;
+
+            if (local_slopes.size() % 2 == 0) {
+                auto max_it = std::max_element(local_slopes.begin(), mid_it);
+                group_median = (group_median + *max_it) / 2.0;
+            }
+            local_medians[tid].push_back(group_median);
         }
     }
 
-    if (slopes.empty()) {
+    // Combine results from all threads safely
+    for (int t = 0; t < num_threads; ++t) {
+        group_medians.insert(group_medians.end(), local_medians[t].begin(), local_medians[t].end());
+    }
+
+    if (group_medians.empty()) {
         return handle_error(-20006);
     }
 
-    // 6. High-speed single-pass median for slopes
-    size_t n_slopes = slopes.size();
-    auto mid_slopes = static_cast<ptrdiff_t>(n_slopes / 2);
+    // Final median of the group medians
+    size_t n_groups = group_medians.size();
+    size_t mid_slopes = n_groups / 2;
+    auto mid_slope_it = group_medians.begin();
+    std::advance(mid_slope_it, static_cast<std::ptrdiff_t>(mid_slopes));
+    std::nth_element(group_medians.begin(), mid_slope_it, group_medians.end());
+    double median_slope = *mid_slope_it;
 
-    std::nth_element(slopes.begin(), slopes.begin() + mid_slopes, slopes.end());
-    double median_slope = slopes[static_cast<size_t>(mid_slopes)];
-
-    if (n_slopes % 2 == 0) {
-        auto max_it = std::max_element(slopes.begin(), slopes.begin() + mid_slopes);
+    if (n_groups % 2 == 0) {
+        auto max_it = std::max_element(group_medians.begin(), mid_slope_it);
         median_slope = (median_slope + *max_it) / 2.0;
     }
 
@@ -119,12 +149,14 @@ extern "C" __declspec(dllexport) int32_t ThielSenProcessing(
     }
 
     // 8. High-speed single-pass median for intercepts
-    auto mid_intercepts = static_cast<ptrdiff_t>(n / 2);
-    std::nth_element(intercepts.begin(), intercepts.begin() + mid_intercepts, intercepts.end());
-    double median_intercept = intercepts[static_cast<size_t>(mid_intercepts)];
+    size_t mid_intercepts = static_cast<size_t>(n) / 2;
+    auto mid_intercept_it = intercepts.begin();
+    std::advance(mid_intercept_it, static_cast<std::ptrdiff_t>(mid_intercepts));
+    std::nth_element(intercepts.begin(), mid_intercept_it, intercepts.end());
+    double median_intercept = *mid_intercept_it;
 
     if (n % 2 == 0) {
-        auto max_it = std::max_element(intercepts.begin(), intercepts.begin() + mid_intercepts);
+        auto max_it = std::max_element(intercepts.begin(), mid_intercept_it);
         median_intercept = (median_intercept + *max_it) / 2.0;
     }
 
